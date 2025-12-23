@@ -23,6 +23,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const db = new Database('sgames_professional.sqlite');
 const COLOR_NARANJA = 0xFF8C00;
+const DEVELOPER_INFO = "Desarrollado por Sloet Games Tecnologie para Discord.";
 
 // CONFIGURACIÓN DE APIs GROQ
 const GROQ_APIS = [
@@ -212,8 +213,8 @@ function incrementMessageCount(userId) {
     
     db.prepare('UPDATE user_rate_limit SET message_count = ? WHERE user_id = ?').run(newCount, userId);
 
-    if (newCount >= 50) {
-        const limitUntil = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
+    if (newCount >= 35) {
+        const limitUntil = new Date(Date.now() + 20 * 60 * 1000); // 20 minutos
         db.prepare('UPDATE user_rate_limit SET limit_until = ? WHERE user_id = ?').run(limitUntil.toISOString(), userId);
         return { limited: true, limitUntil };
     }
@@ -225,6 +226,17 @@ function incrementMessageCount(userId) {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
+    // Comando para información del desarrollador
+    if (message.content.toLowerCase() === '!developer' || message.content.toLowerCase() === '!desarrollador') {
+        const embed = new EmbedBuilder()
+            .setColor(COLOR_NARANJA)
+            .setTitle('🤖 Información del Desarrollador')
+            .setDescription(DEVELOPER_INFO)
+            .setFooter({ text: 'SSGbot - Sloet Games' });
+        await message.reply({ embeds: [embed] });
+        return;
+    }
+
     if (message.channel.type === ChannelType.DM) {
         try {
             // Verificar rate limit
@@ -232,9 +244,13 @@ client.on('messageCreate', async (message) => {
             
             if (!rateLimitCheck.allowed) {
                 const limitUntil = new Date(rateLimitCheck.limitUntil);
-                const timerMsg = await message.reply({
-                    content: `⏱️ **Has alcanzado el límite de uso diario. Puedes seguir enviando mensajes después de 30 minutos.**\n\n⏰ Tiempo restante: **30:00**`
-                });
+                const embed = new EmbedBuilder()
+                    .setColor(COLOR_NARANJA)
+                    .setTitle('⏱️ Límite de Mensajes Alcanzado')
+                    .setDescription('Has alcanzado el límite de mensajes por período. Puedes continuar después de 20 minutos.')
+                    .addFields({ name: 'Tiempo Restante', value: '20:00', inline: true })
+                    .setFooter({ text: DEVELOPER_INFO });
+                const timerMsg = await message.reply({ embeds: [embed] });
 
                 // Guardar ID del mensaje para editarlo
                 db.prepare('UPDATE user_rate_limit SET timer_message_id = ? WHERE user_id = ?').run(timerMsg.id, message.author.id);
@@ -247,7 +263,12 @@ client.on('messageCreate', async (message) => {
                     if (timeLeft <= 0) {
                         clearInterval(timerInterval);
                         db.prepare('UPDATE user_rate_limit SET message_count = 0, limit_until = NULL, timer_message_id = NULL WHERE user_id = ?').run(message.author.id);
-                        await timerMsg.edit({ content: `✅ **¡Tu límite ha sido reiniciado!** Ahora puedes volver a escribir.` }).catch(() => {});
+                        const endEmbed = new EmbedBuilder()
+                            .setColor(0x00FF00)
+                            .setTitle('✅ Límite Reiniciado')
+                            .setDescription('¡Tu límite ha sido reiniciado! Ahora puedes volver a escribir.')
+                            .setFooter({ text: DEVELOPER_INFO });
+                        await timerMsg.edit({ embeds: [endEmbed] }).catch(() => {});
                         return;
                     }
 
@@ -255,9 +276,13 @@ client.on('messageCreate', async (message) => {
                     const seconds = Math.floor((timeLeft % 60000) / 1000);
                     const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-                    await timerMsg.edit({ 
-                        content: `⏱️ **Has alcanzado el límite de uso diario. Puedes seguir enviando mensajes después de 30 minutos.**\n\n⏰ Tiempo restante: **${timeStr}**` 
-                    }).catch(() => {});
+                    const updatedEmbed = new EmbedBuilder()
+                        .setColor(COLOR_NARANJA)
+                        .setTitle('⏱️ Límite de Mensajes Alcanzado')
+                        .setDescription('Has alcanzado el límite de mensajes por período. Puedes continuar después de 20 minutos.')
+                        .addFields({ name: 'Tiempo Restante', value: timeStr, inline: true })
+                        .setFooter({ text: DEVELOPER_INFO });
+                    await timerMsg.edit({ embeds: [updatedEmbed] }).catch(() => {});
                 }, 1000);
 
                 return;
@@ -272,12 +297,25 @@ client.on('messageCreate', async (message) => {
             // Incrementar contador de mensajes
             const limitResult = incrementMessageCount(message.author.id);
 
+            // Si se alcanzó el límite, enviar DM al usuario
+            if (limitResult.limited) {
+                try {
+                    await message.author.send(`⏱️ **Has alcanzado el límite de mensajes por período.**\n\nDebes esperar 20 minutos antes de continuar.`);
+                } catch (e) {
+                    // Si no puede enviar DM, ignorar
+                }
+            }
+
             // Si se alcanzó el límite AHORA, mostrar timer
             if (limitResult.limited) {
-                const limitUntil = new Date(Date.now() + 30 * 60 * 1000);
-                const timerMsg = await message.reply({
-                    content: `⏱️ **Has alcanzado el límite de uso diario. Puedes seguir enviando mensajes después de 30 minutos.**\n\n⏰ Tiempo restante: **30:00**`
-                });
+                const limitUntil = new Date(Date.now() + 20 * 60 * 1000);
+                const embed = new EmbedBuilder()
+                    .setColor(COLOR_NARANJA)
+                    .setTitle('⏱️ Límite de Mensajes Alcanzado')
+                    .setDescription('Has alcanzado el límite de mensajes por período. Puedes continuar después de 20 minutos.')
+                    .addFields({ name: 'Tiempo Restante', value: '20:00', inline: true })
+                    .setFooter({ text: DEVELOPER_INFO });
+                const timerMsg = await message.reply({ embeds: [embed] });
 
                 // Guardar ID del mensaje para editarlo
                 db.prepare('UPDATE user_rate_limit SET timer_message_id = ? WHERE user_id = ?').run(timerMsg.id, message.author.id);
@@ -290,7 +328,12 @@ client.on('messageCreate', async (message) => {
                     if (timeLeft <= 0) {
                         clearInterval(timerInterval);
                         db.prepare('UPDATE user_rate_limit SET message_count = 0, limit_until = NULL, timer_message_id = NULL WHERE user_id = ?').run(message.author.id);
-                        await timerMsg.edit({ content: `✅ **¡Tu límite ha sido reiniciado!** Ahora puedes volver a escribir.` }).catch(() => {});
+                        const endEmbed = new EmbedBuilder()
+                            .setColor(0x00FF00)
+                            .setTitle('✅ Límite Reiniciado')
+                            .setDescription('¡Tu límite ha sido reiniciado! Ahora puedes volver a escribir.')
+                            .setFooter({ text: DEVELOPER_INFO });
+                        await timerMsg.edit({ embeds: [endEmbed] }).catch(() => {});
                         return;
                     }
 
@@ -298,9 +341,13 @@ client.on('messageCreate', async (message) => {
                     const seconds = Math.floor((timeLeft % 60000) / 1000);
                     const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-                    await timerMsg.edit({ 
-                        content: `⏱️ **Has alcanzado el límite de uso diario. Puedes seguir enviando mensajes después de 30 minutos.**\n\n⏰ Tiempo restante: **${timeStr}**` 
-                    }).catch(() => {});
+                    const updatedEmbed = new EmbedBuilder()
+                        .setColor(COLOR_NARANJA)
+                        .setTitle('⏱️ Límite de Mensajes Alcanzado')
+                        .setDescription('Has alcanzado el límite de mensajes por período. Puedes continuar después de 20 minutos.')
+                        .addFields({ name: 'Tiempo Restante', value: timeStr, inline: true })
+                        .setFooter({ text: DEVELOPER_INFO });
+                    await timerMsg.edit({ embeds: [updatedEmbed] }).catch(() => {});
                 }, 1000);
 
                 return;
